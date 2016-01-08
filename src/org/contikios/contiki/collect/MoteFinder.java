@@ -35,6 +35,7 @@
  * Created : 4 jul 2008
  * Updated : $Date: 2010/11/03 14:53:05 $
  *           $Revision: 1.1 $
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
@@ -61,6 +62,7 @@ public class MoteFinder {
 //  private boolean hasVerifiedProcess;
   private ArrayList<String> comList = new ArrayList<String>();
   private ArrayList<String> moteList = new ArrayList<String>();
+  private ArrayList<String> moteInfoList = new ArrayList<String>();
 
   public MoteFinder() {
     String osName = System.getProperty("os.name", "").toLowerCase();
@@ -146,6 +148,10 @@ public class MoteFinder {
     return moteList.toArray(new String[moteList.size()]);
   }
 
+  public String[] getMoteInfoList() {
+    return moteInfoList.toArray(new String[moteInfoList.size()]);
+  }
+
   public void close() {
     if (moteListProcess != null) {
       moteListProcess.destroy();
@@ -173,6 +179,7 @@ public class MoteFinder {
         }
         comList.add(comPort);
         moteList.add(moteID);
+        moteInfoList.add(line);
       } else {
         System.err.println("Motelist> " + line);
       }

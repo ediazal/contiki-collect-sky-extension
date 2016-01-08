@@ -35,6 +35,7 @@
  * Created : 20 aug 2008
  * Updated : $Date: 2010/11/03 14:53:05 $
  *           $Revision: 1.1 $
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
@@ -42,7 +43,7 @@ package org.contikios.contiki.collect;
 /**
  *
  */
-public class SensorDataAggregator implements SensorInfo {
+public class SensorDataAggregator implements SensorInfo, SensorIdentifier {
 
   private final Node node;
   private long[] values;
@@ -237,7 +238,9 @@ public class SensorDataAggregator implements SensorInfo {
   }
 
   public double getAverageTemperature() {
-    return dataCount > 0 ? (-39.6 + 0.01 * (values[TEMPERATURE] / dataCount)) : 0.0;
+    return dataCount > 0 ?
+        node.getConvOf(TEMPERATURE_SENSOR,(double)values[TEMPERATURE] / dataCount)
+        :0.0;
   }
 
   public double getAverageRtmetric() {

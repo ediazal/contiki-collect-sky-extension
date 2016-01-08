@@ -35,6 +35,7 @@
  * Created : 20 aug 2008
  * Updated : $Date: 2010/11/03 14:53:05 $
  *           $Revision: 1.1 $
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
@@ -72,14 +73,30 @@ public interface SensorInfo {
   public static final int RTMETRIC = 17;
   public static final int NUM_NEIGHBORS = 18;
   public static final int BEACON_INTERVAL = 19;
+  // 20 to 25: SENSORS
   public static final int BATTERY_VOLTAGE = 20;
   public static final int BATTERY_INDICATOR = 21;
+  public static final int CO = 22;
+  public static final int CO2 = 23;
+  public static final int DUST = 24;
   public static final int LIGHT1 = 22;
   public static final int LIGHT2 = 23;
   public static final int TEMPERATURE = 24;
   public static final int HUMIDITY = 25;
   public static final int RSSI = 26;
 
+  // sensor boards
+  public static final int SENSOR_BOARD = 29;
+  public static final int TmoteSky = 0; // Temp, hum, light1, light2
+  public static final int AR1000 = 1; // CO, CO2, Dust
+  public static final int DS1000 = 2; // CO, CO2, Temp
+  public static final int EM1000 = 3; // Temp, hum, accelerometer, light1, light2
+  public static final int SE1000 = 4; // Infrared, magnetic, dB level
+  public static final int CO1000 = 5; // Force & load, tilt (inclinacion), accelerometer
+  public static final int EX1000 = 6; // extend the motes I/O capability, EXpansion board
+  
+  public static final int SINK = -1;
+  
   public static final int VALUES_COUNT = 30;
 
 }

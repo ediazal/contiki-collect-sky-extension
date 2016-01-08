@@ -35,6 +35,7 @@
  * Created : 3 jul 2008
  * Updated : $Date: 2011/01/09 21:06:10 $
  *           $Revision: 1.2 $
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
@@ -51,6 +52,7 @@ public class SensorData implements SensorInfo {
   private final long systemTime;
   private int seqno;
   private boolean isDuplicate;
+  private int type;
 
   public SensorData(Node node, int[] values, long systemTime) {
     this.node = node;
@@ -58,6 +60,14 @@ public class SensorData implements SensorInfo {
     this.nodeTime = ((values[TIMESTAMP1] << 16) + values[TIMESTAMP2]) * 1000L;
     this.systemTime = systemTime;
     this.seqno = values[SEQNO];
+  }
+
+  public SensorData(Node node, int t) {
+    this.node = node;
+    values = null;
+    nodeTime = 0;
+    systemTime = 0;
+    type = t;
   }
 
   public Node getNode() {
@@ -150,7 +160,7 @@ public class SensorData implements SensorInfo {
       return null;
     }
     String nodeID = mapNodeID(data[NODE_ID]);
-    Node node = server.addNode(nodeID);
+    Node node = server.addNode(nodeID, data[SENSOR_BOARD]);
     return new SensorData(node, data, systemTime);
   }
 
@@ -196,8 +206,20 @@ public class SensorData implements SensorInfo {
     return (1000L * (values[TIME_CPU] + values[TIME_LPM])) / TICKS_PER_SECOND;
   }
 
-  public double getTemperature() {
-    return -39.6 + 0.01 * values[TEMPERATURE];
+  public double getRadioIntensity() {
+    return values[RSSI];
+  }
+
+  public double getLatency() {
+    return values[LATENCY] / 32678.0;
+  }
+
+  public String getBestNeighborID() {
+    return values[BEST_NEIGHBOR] > 0 ? mapNodeID(values[BEST_NEIGHBOR]) : null;
+  }
+
+  public double getBestNeighborETX() {
+    return values[BEST_NEIGHBOR_ETX] / 8.0;
   }
 
   public double getBatteryVoltage() {
@@ -208,36 +230,14 @@ public class SensorData implements SensorInfo {
     return values[BATTERY_INDICATOR];
   }
 
-  public double getRadioIntensity() {
-    return values[RSSI];
-  }
+  public int getType() {
+    if (values == null)
+      return type;
 
-  public double getLatency() {
-    return values[LATENCY] / 32678.0;
+    return values[SENSOR_BOARD];
   }
-
-  public double getHumidity() {
-    double v = -4.0 + 405.0 * values[HUMIDITY] / 10000.0;
-    if(v > 100) {
-      return 100;
-    }
-    return v;
+  
+  protected double getSensorDataValue(String sensorId){
+    return node.getConvOf(sensorId,this);
   }
-
-  public double getLight1() {
-    return 10.0 * values[LIGHT1] / 7.0;
-  }
-
-  public double getLight2() {
-    return 46.0 * values[LIGHT2] / 10.0;
-  }
-
-  public String getBestNeighborID() {
-    return values[BEST_NEIGHBOR] > 0 ? mapNodeID(values[BEST_NEIGHBOR]): null;
-  }
-
-  public double getBestNeighborETX() {
-    return values[BEST_NEIGHBOR_ETX] / 8.0;
-  }
-
 }

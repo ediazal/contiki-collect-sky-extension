@@ -81,7 +81,10 @@ public abstract class AggregatedTimeChartPanel<T> extends JPanel implements Visu
     this.server = server;
     this.category = category;
     this.title = title;
-    this.series = new TimeSeries(title, Minute.class);
+    /*  @deprecated:
+	   *	this.series = new TimeSeries(title, Minute.class);
+     */
+    this.series = new TimeSeries(title);
     TimeSeriesCollection timeSeries = new TimeSeriesCollection(series);
     this.chart = ChartFactory.createTimeSeriesChart(
         title, timeAxisLabel, valueAxisLabel, timeSeries,

@@ -35,6 +35,8 @@
  * Created : 3 jul 2008
  * Updated : $Date: 2010/11/23 16:21:48 $
  *           $Revision: 1.4 $
+ *
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect.gui;
@@ -116,6 +118,8 @@ public class MapPanel extends JPanel implements Configurable, Visualizer, Action
   private JCheckBoxMenuItem showNetworkItem;
   private JCheckBoxMenuItem configItem;
   private JMenuItem resetNetworkItem;
+  private JMenuItem paintLastValuesItem;
+  
   private MapNode popupNode;
 
   private Hashtable<String,MapNode> nodeTable = new Hashtable<String,MapNode>();
@@ -167,6 +171,8 @@ public class MapPanel extends JPanel implements Configurable, Visualizer, Action
     if (isMap) {
       backgroundItem = createCheckBoxMenuItem(popupMenu, "Show Background", false);
       backgroundItem.setEnabled(false);
+      popupMenu.addSeparator();
+      paintLastValuesItem = createCheckBoxMenuItem(popupMenu, "Paint last values",true);
     } else {
       configItem = createCheckBoxMenuItem(popupMenu, "Show Layout Settings", false);
     }
@@ -504,7 +510,10 @@ public class MapPanel extends JPanel implements Configurable, Visualizer, Action
     }
 
     for (MapNode n : nodes) {
-      n.paint(g, n.x, n.y);
+      if (isMap && paintLastValuesItem.isSelected())
+        n.paint(g, n.x, n.y, true);
+      else
+        n.paint(g, n.x, n.y, false);
 
       g.setColor(Color.black);
       if (n.isSelected) {
@@ -606,6 +615,9 @@ public class MapPanel extends JPanel implements Configurable, Visualizer, Action
       repaint();
     } else if (isMap && source == backgroundItem) {
       showBackground = mapImage != null && backgroundItem.isSelected();
+      repaint();
+    } else if (isMap && source == paintLastValuesItem) {
+      //paintLastValuesItem.setSelected(!paintLastValuesItem.isSelected());
       repaint();
     }
   }
@@ -826,10 +838,15 @@ public class MapPanel extends JPanel implements Configurable, Visualizer, Action
       this.node = node;
     }
 
-    public void paint(Graphics g, int x, int y) {
+    public void paint(Graphics g, int x, int y, boolean paintSensorData) {
       final int od = 3;
       g.setColor(Color.black);
       g.drawString(node.getID(), x + od * 2 + 3, y + 4);
+
+      if (paintSensorData) {
+        node.paintLastData(g, x, y, od);
+      }
+      
       if (hasFixedLocation) {
         g.setColor(Color.red);
       }

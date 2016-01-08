@@ -35,16 +35,23 @@
  * Created : 3 jul 2008
  * Updated : $Date: 2010/11/03 14:53:05 $
  *           $Revision: 1.1 $
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
+
+import java.awt.Graphics;
+import java.math.RoundingMode;
+import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Hashtable;
+import java.util.LinkedHashMap;
+
 
 /**
  *
  */
-public class Node implements Comparable<Node> {
+public abstract class  Node implements Comparable<Node>, SensorIdentifier {
 
   private static final boolean SINGLE_LINK = true;
 
@@ -67,6 +74,7 @@ public class Node implements Comparable<Node> {
     this.id = nodeID;
     this.name = nodeName;
     sensorDataAggregator = new SensorDataAggregator(this);
+    sensors = new LinkedHashMap<String, Sensor>();
   }
 
   public final String getID() {
@@ -137,6 +145,14 @@ public class Node implements Comparable<Node> {
 
   public SensorDataAggregator getSensorDataAggregator() {
     return sensorDataAggregator;
+  }
+
+  public SensorData getLastSD() {
+    int lastData = getSensorDataCount() - 1;
+    if (lastData == -1)
+      return null;
+
+    return getSensorData(lastData);
   }
 
   public SensorData[] getAllSensorData() {
@@ -214,4 +230,118 @@ public class Node implements Comparable<Node> {
     links.clear();
   }
 
+  // -------------------------------------------------------------------
+  // sky-boards-collect extension
+  // -------------------------------------------------------------------
+  protected LinkedHashMap<String, Sensor> sensors = new LinkedHashMap<String, Sensor>();
+  protected Hashtable<String, Integer> dataMsgMapping = new Hashtable<String, Integer>();
+  public String type;
+  public int PLATFORM_ADC_RESOLUTION;
+  
+  public Sensor[] getSensors() {
+    Sensor[] sensors_array = new Sensor[sensors.size()];
+    int i = 0;
+    for (Object key : sensors.keySet()) {
+      sensors_array[i] = sensors.get(key);
+      i++;
+    }
+    return sensors_array;
+  }
+
+  public Sensor getNodeSensor(String sensorID) {
+    return sensors.get(sensorID);
+  }
+
+  public int getSensorsCount() {
+    return sensors.size();
+  }
+  public void setDefaultValues(String sensorID) {
+    sensors.get(sensorID).setConstants();
+  }
+  
+  public double getConvOf(String sensorID, Double value) {
+    Sensor s=sensors.get(sensorID);
+    if (s==(Sensor) null)
+      return Double.NaN;
+    else{
+      return s.getConv(value);
+    }
+  }
+  
+  public double getConvOf(String sensorID, SensorData data) {
+    Sensor s=sensors.get(sensorID);
+    if (s==(Sensor) null)
+      return Double.NaN;
+    else{
+      Double value=(double)data.getValue(dataMsgMap(sensorID));
+      return s.getConv(value);
+    }
+  }
+  
+  public double getConvOf(String sensorID) {
+    if (this.getLastSD()==null)
+      return Double.NaN;
+    Sensor s=sensors.get(sensorID);
+    if (s==(Sensor) null)
+      return Double.NaN;
+    else{
+      return s.getConv(getLastValueOf(sensorID));
+    }
+  }
+  
+  public String getRoundedConvOf(String sensorID){
+    return round(getConvOf(sensorID),
+        sensors.get(sensorID).getRoundDigits());
+  }
+  
+  public Double getLastValueOf(String sensorID) {
+    SensorData sd=this.getLastSD();
+    if (sd==null) 
+      return Double.NaN;
+    
+    return (double)sd.getValue(dataMsgMapping.get(sensorID));
+  }
+  
+  public int dataMsgMap(String sensorID){
+    return dataMsgMapping.get(sensorID);
+  }
+  
+  public String getFirmName() {
+    return type;
+  }
+  
+  public void paintLastData(Graphics g, int x, int y, int od) {
+    int vspace = 15;
+    int strmaxsz = 6;
+    int i = 1;
+    y+=4;
+    x+=3+(od*2);
+    String sensorStr="";
+
+    if (getLastSD() == null)
+      return;
+    
+    for (String sensorID: sensors.keySet()){
+      if (sensorID.length()>strmaxsz)
+        sensorStr=sensorID.substring(0, strmaxsz);
+      else sensorStr=sensorID;
+      g.drawString(sensorStr+" = "+getRoundedConvOf(sensorID), x, y + vspace*i);
+      i++;  
+    }
+  }
+  
+  static String round(double d, int digits) {
+    NumberFormat frm = NumberFormat.getInstance();
+    frm.setMaximumFractionDigits(digits);
+    frm.setRoundingMode(RoundingMode.UP);
+    return frm.format(d);
+  }
+  
+  // Abstract methods
+  public abstract void init();
+  public abstract void addSensors();
+  public abstract void mapMsgFormat();
+  public abstract void setNodeType();
+  public abstract void setPlatformADCResolution();
+  public abstract void copySensorsFrom(Node n);
 }

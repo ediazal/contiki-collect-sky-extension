@@ -32,6 +32,8 @@
  *
  * Authors : Joakim Eriksson, Niclas Finne
  * Created : 3 jul 2008
+ *
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
@@ -60,6 +62,8 @@ import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Vector;
+
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 import javax.swing.BorderFactory;
@@ -77,22 +81,36 @@ import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 import javax.swing.ListCellRenderer;
 import javax.swing.SwingUtilities;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
+
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.axis.ValueAxis;
+
 import org.contikios.contiki.collect.gui.AggregatedTimeChartPanel;
 import org.contikios.contiki.collect.gui.BarChartPanel;
+import org.contikios.contiki.collect.gui.ConvPanel;
+import org.contikios.contiki.collect.gui.CosmDataFeeder;
+import org.contikios.contiki.collect.gui.FirmwareDialog;
 import org.contikios.contiki.collect.gui.MapPanel;
 import org.contikios.contiki.collect.gui.NodeControl;
 import org.contikios.contiki.collect.gui.NodeInfoPanel;
+import org.contikios.contiki.collect.gui.SenseDataFeeder;
 import org.contikios.contiki.collect.gui.SerialConsole;
 import org.contikios.contiki.collect.gui.TimeChartPanel;
+import org.contikios.contiki.collect.platform.NodeAR1000;
+import org.contikios.contiki.collect.platform.NodeDS1000;
+import org.contikios.contiki.collect.platform.NodeSink;
+import org.contikios.contiki.collect.platform.NodeTmoteSky;
 
 /**
  *
  */
-public class CollectServer implements SerialConnectionListener {
+@SuppressWarnings({ "serial", "unchecked", "rawtypes" })
+public class CollectServer implements SerialConnectionListener,
+    SensorIdentifier {
 
   public static final String WINDOW_TITLE = "Sensor Data Collect with Contiki";
   public static final String STDIN_COMMAND = "<STDIN>";
@@ -150,8 +168,12 @@ public class CollectServer implements SerialConnectionListener {
   private int defaultMaxItemCount = 250;
   private long nodeTimeDelta;
 
-  @SuppressWarnings("serial")
+  private SenseDataFeeder dataFeederSense;
+  private CosmDataFeeder dataFeederCosm;
+  private ConvPanel convPanel;
+
   public CollectServer() {
+
     loadConfig(config, CONFIG_FILE);
 
     this.configFile = config.getProperty("config.datafile", CONFIG_DATA_FILE);
@@ -244,24 +266,34 @@ public class CollectServer implements SerialConnectionListener {
       mapPanel.setMapBackground(image);
     }
     NodeControl nodeControl = new NodeControl(this, MAIN);
+    dataFeederSense = new SenseDataFeeder(MAIN, configTable);
+    dataFeederCosm = new CosmDataFeeder(MAIN, configTable);
+    convPanel = new ConvPanel(this, MAIN, "Conversions", configTable);
 
     visualizers = new Visualizer[] {
+        convPanel,
         nodeControl,
         mapPanel,
+        dataFeederSense,
+        dataFeederCosm,
         new MapPanel(this, "Network Graph", MAIN, false),
-        new BarChartPanel(this, SENSORS, "Average Temperature", "Temperature", "Nodes", "Celsius",
+        new BarChartPanel(this, SENSORS, "Average Temperature",
+            "Average Temperature", "Nodes", "Celsius",
             new String[] { "Celsius" }) {
           {
             chart.getCategoryPlot().getRangeAxis().setStandardTickUnits(NumberAxis.createIntegerTickUnits());
           }
           protected void addSensorData(SensorData data) {
             Node node = data.getNode();
+            if (node.getNodeSensor(TEMPERATURE_SENSOR) == null)
+              return;
             String nodeName = node.getName();
             SensorDataAggregator aggregator = node.getSensorDataAggregator();
             dataset.addValue(aggregator.getAverageTemperature(), categories[0], nodeName);
           }
         },
-        new TimeChartPanel(this, SENSORS, "Temperature", "Temperature", "Time", "Celsius") {
+        new TimeChartPanel(this, SENSORS, TEMPERATURE_SENSOR, "Temperature",
+            "Time", "Celsius") {
           {
             chart.getXYPlot().getRangeAxis().setStandardTickUnits(NumberAxis.createIntegerTickUnits());
             setRangeTick(5);
@@ -269,15 +301,15 @@ public class CollectServer implements SerialConnectionListener {
             setGlobalRange(true);
           }
           protected double getSensorDataValue(SensorData data) {
-            return data.getTemperature();
+            return data.getSensorDataValue(TEMPERATURE_SENSOR);
           }
         },
         new TimeChartPanel(this, SENSORS, "Battery Voltage", "Battery Voltage",
-			   "Time", "Volt") {
+            "Time", "Volt") {
           {
             setRangeTick(1);
-	    setRangeMinimumSize(4.0);
-	    setGlobalRange(true);
+            setRangeMinimumSize(4.0);
+            setGlobalRange(true);
           }
           protected double getSensorDataValue(SensorData data) {
             return data.getBatteryVoltage();
@@ -295,25 +327,47 @@ public class CollectServer implements SerialConnectionListener {
             return data.getBatteryIndicator();
           }
         },
-        new TimeChartPanel(this, SENSORS, "Relative Humidity", "Humidity", "Time", "%") {
+        new TimeChartPanel(this, SENSORS, HUMIDITY_SENSOR, "Relative Humidity",
+            "Time", "%") {
           {
             chart.getXYPlot().getRangeAxis().setRange(0.0, 100.0);
           }
           protected double getSensorDataValue(SensorData data) {
-            return data.getHumidity();
+            return data.getSensorDataValue(HUMIDITY_SENSOR);
           }
         },
-        new TimeChartPanel(this, SENSORS, "Light 1", "Light 1", "Time", "-") {
+        new TimeChartPanel(this, SENSORS, LIGHT1_SENSOR,
+            "Photosynthetically Active Radiation", "Time", "Lx") {
           protected double getSensorDataValue(SensorData data) {
-            return data.getLight1();
+            return data.getSensorDataValue(LIGHT1_SENSOR);
           }
         },
-        new TimeChartPanel(this, SENSORS, "Light 2", "Light 2", "Time", "-") {
+        new TimeChartPanel(this, SENSORS, LIGHT2_SENSOR,
+            "Total Solar Radiation", "Time", "Lx") {
           protected double getSensorDataValue(SensorData data) {
-            return data.getLight2();
+            return data.getSensorDataValue(LIGHT2_SENSOR);
           }
         },
-        new TimeChartPanel(this, NETWORK, "Neighbors", "Neighbor Count", "Time", "Neighbors") {
+        new TimeChartPanel(this, SENSORS, CO_SENSOR, "Carbon monoxide", "Time",
+            "ppm") {
+          protected double getSensorDataValue(SensorData data) {
+            return data.getSensorDataValue(CO_SENSOR);
+          }
+        },
+        new TimeChartPanel(this, SENSORS, CO2_SENSOR, "Carbon dioxide", "Time",
+            "ppm") {
+          protected double getSensorDataValue(SensorData data) {
+            return data.getSensorDataValue(CO2_SENSOR);
+          }
+        },
+        new TimeChartPanel(this, SENSORS, DUST_SENSOR,
+            "Particle concentration", "Time", "mg/m^3") {
+          protected double getSensorDataValue(SensorData data) {
+            return data.getSensorDataValue(DUST_SENSOR);
+          }
+        },
+        new TimeChartPanel(this, NETWORK, "Neighbors", "Neighbor Count",
+            "Time", "Neighbors") {
           {
             ValueAxis axis = chart.getXYPlot().getRangeAxis();
             ((NumberAxis)axis).setAutoRangeIncludesZero(true);
@@ -751,6 +805,13 @@ public class CollectServer implements SerialConnectionListener {
 
     });
     toolsMenu.add(item);
+    /*
+     * item = new JMenuItem("Adjust conversion expressions...");
+     * item.addActionListener(new ActionListener() {
+     * 
+     * public void actionPerformed(ActionEvent e) { adjustConversions(); } });
+     * toolsMenu.add(item);
+     */
 
     final JCheckBoxMenuItem baseShapeItem = new JCheckBoxMenuItem("Base Shape Visible");
     baseShapeItem.setSelected(true);
@@ -772,7 +833,21 @@ public class CollectServer implements SerialConnectionListener {
 
     window.setJMenuBar(menuBar);
     window.pack();
+    mainPanel.addChangeListener(new ChangeListener() {
+      public void stateChanged(ChangeEvent e) {
+        if (((JTabbedPane) e.getSource()).getSelectedComponent() instanceof ConvPanel) {
+          convPanel.setSelected(true);
+          convPanel.nodesSelected(getSelectedNodes());
+        } else
+          convPanel.setSelected(false);
+      }
+    });
+    parseConfigFile();
 
+  }
+
+  private void parseConfigFile() {
+    // TODO XML file
     String bounds = configTable.getProperty("collect.bounds");
     if (bounds != null) {
       String[] b = bounds.split(",");
@@ -782,10 +857,38 @@ public class CollectServer implements SerialConnectionListener {
       }
     }
 
-    for(Object key: configTable.keySet()) {
-      String property = key.toString();
-      if (!property.startsWith("collect")) {
-        getNode(property, true);
+    Vector<String> vars = new Vector<String>();
+    Vector<String> values = new Vector<String>();
+
+
+    // Add nodes stored in config file
+    for (Object k : configTable.keySet()) {
+      String key=(String) k;
+      String nodetype;
+      if (key.startsWith("var")) {
+        vars.add(key);
+        values.add(getConfig(key));
+      } else if (key.startsWith("feedcosm")) {
+        dataFeederCosm.loadConfigLine(key, configTable.getProperty(key));
+      } else if (key.startsWith("feedsense")) {
+        dataFeederSense.loadConfigLine(key, configTable.getProperty(key));
+      } else if (!key.startsWith("collect") && !key.startsWith("firm")) {
+        // Add node
+        if ((nodetype = getConfig("firm," + key)) != null) {
+          getNode(key, true, Integer.parseInt(nodetype));
+        }
+      }
+    }
+
+    // set sensor variables
+    for (int j = 0, n=vars.size(); j < n; j++) {
+      String[] varKey = vars.get(j).split(",");
+      String nodeID = varKey[1];
+      String sensorName = varKey[2];
+      String varName = varKey[3];
+      Sensor sensor = nodeTable.get(nodeID).getNodeSensor(sensorName);
+      if (sensor != null) {
+        sensor.setVar(varName, Double.parseDouble(values.get(j)));
       }
     }
   }
@@ -978,48 +1081,65 @@ public class CollectServer implements SerialConnectionListener {
     return nodeCache;
   }
 
-  public Node addNode(String nodeID) {
-    return getNode(nodeID, true);
+  public Node createNode(String nodeID,int nodeType){
+    switch (nodeType) {
+    case SensorInfo.TmoteSky:
+      return new NodeTmoteSky(nodeID);
+    case SensorInfo.AR1000:
+      return new NodeAR1000(nodeID);
+    case SensorInfo.DS1000:
+      return new NodeDS1000(nodeID);
+    case SensorInfo.SINK:
+      return new NodeSink(nodeID);
+    default:
+      return new NodeTmoteSky(nodeID);
+    }
+  }
+  
+  public Node addNode(String nodeID, int nodeType) {
+    return getNode(nodeID, true, nodeType);
   }
 
-  private Node getNode(final String nodeID, boolean notify) {
+  private Node getNode(final String nodeID, boolean notify, int nodeType) {
     Node node = nodeTable.get(nodeID);
-    if (node == null) {
-      node = new Node(nodeID);
-      nodeTable.put(nodeID, node);
+    if (node != null)
+      return node;
 
-      synchronized (this) {
-        nodeCache = null;
-      }
+    node=createNode(nodeID,nodeType);
+    setConfig("firm," + nodeID, String.valueOf(nodeType));
+    nodeTable.put(nodeID, node);
 
-      if (notify) {
-        final Node newNode = node;
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-              boolean added = false;
-              for (int i = 1, n = nodeModel.size(); i < n; i++) {
-                int cmp = newNode.compareTo((Node) nodeModel.get(i));
-                if (cmp < 0) {
-                  nodeModel.insertElementAt(newNode, i);
-                  added = true;
-                  break;
-                } else if (cmp == 0) {
-                  // node already added
-                  added = true;
-                  break;
-                }
-              }
-              if (!added) {
-                nodeModel.addElement(newNode);
-              }
-              if (visualizers != null) {
-                for (int i = 0, n = visualizers.length; i < n; i++) {
-                  visualizers[i].nodeAdded(newNode);
-                }
-              }
+    synchronized (this) {
+      nodeCache = null;
+    }
+
+    if (notify) {
+      final Node newNode = node;
+      SwingUtilities.invokeLater(new Runnable() {
+        public void run() {
+          boolean added = false;
+          for (int i = 1, n = nodeModel.size(); i < n; i++) {
+            int cmp = newNode.compareTo((Node) nodeModel.get(i));
+            if (cmp < 0) {
+              nodeModel.insertElementAt(newNode, i);
+              added = true;
+              break;
+            } else if (cmp == 0) {
+              // node already added
+              added = true;
+              break;
             }
-          });
-      }
+          }
+          if (!added) {
+            nodeModel.addElement(newNode);
+          }
+          if (visualizers != null) {
+            for (int i = 0, n = visualizers.length; i < n; i++) {
+              visualizers[i].nodeAdded(newNode);
+            }
+          }
+        }
+      });
     }
     return node;
   }
@@ -1054,6 +1174,26 @@ public class CollectServer implements SerialConnectionListener {
      return selectedNodes;
    }
 
+  /*
+   * This method is called from ConvPanel class to update TimeChartPanel
+   * instance
+   */
+  public void updateChart(final String title) {
+    SwingUtilities.invokeLater(new Runnable() {
+      public void run() {
+        if (visualizers != null) {
+          for (int i = 0, n = visualizers.length; i < n; i++) {
+            if (visualizers[i] instanceof TimeChartPanel) {
+              if (visualizers[i].getTitle().equals(title)) {
+                ((TimeChartPanel) visualizers[i]).update();
+                break;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
 
   // -------------------------------------------------------------------
   // Node location handling
@@ -1190,7 +1330,19 @@ public class CollectServer implements SerialConnectionListener {
   private void handleLinks(SensorData sensorData) {
     String nodeID = sensorData.getBestNeighborID();
     if (nodeID != null) {
-      Node neighbor = addNode(nodeID);
+      Node neighbor = nodeTable.get(nodeID);
+
+      /*
+       * Cannot know at this point what kind of node neighbor is: Do not create
+       * node instance unless that node is sink
+       */
+      if (neighbor == null) {
+        if (sensorData.getValue(SensorData.HOPS) == 1) {
+          neighbor = addNode(nodeID, SensorInfo.SINK);
+        } else
+          return;
+      }
+
       Node source = sensorData.getNode();
       Link link = source.getLink(neighbor);
       link.setETX(sensorData.getBestNeighborETX());
@@ -1348,20 +1500,38 @@ public class CollectServer implements SerialConnectionListener {
       }
     }
 
+    public String[] getAvailableFirmware() throws IOException {
+      File dir = new File("./firmware");
+      String[] files = dir.list();
+      if (files == null) {
+        throw new IllegalStateException("no files in firmware directory");
+      }
+      return files;
+    }
+
     @Override
     public void run() {
       try {
         MoteProgrammer mp = new MoteProgrammer();
         mp.setParentComponent(window);
-        mp.setFirmwareFile(FIRMWARE_FILE);
+
         mp.searchForMotes();
         String[] motes = mp.getMotes();
         if (motes == null || motes.length == 0) {
           JOptionPane.showMessageDialog(window, "Could not find any connected nodes", "Error", JOptionPane.ERROR_MESSAGE);
           return;
         }
-        int reply = JOptionPane.showConfirmDialog(window, "Found " + motes.length + " connected nodes.\n"
-            + "Do you want to upload the firmware " + FIRMWARE_FILE + '?');
+
+        FirmwareDialog fwDlg = new FirmwareDialog(new JFrame(),
+            "Select firmware", mp.getMoteInfoList(), getAvailableFirmware());
+        mp.setFirmwareFiles(fwDlg.getChoosenFirmware());
+        if (mp.getFirmwareFiles().length == 0)
+          return;
+        fwDlg.dispose();
+
+        int reply = JOptionPane.showConfirmDialog(window, "Found "
+            + motes.length + " connected nodes.\n"
+            + "Do you want to upload the selected firmware?");
         if (reply == JFileChooser.APPROVE_OPTION) {
           boolean wasOpen = serialConnection != null && serialConnection.isOpen();
           if (serialConnection != null) {

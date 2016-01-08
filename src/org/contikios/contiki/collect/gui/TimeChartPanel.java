@@ -39,6 +39,7 @@
 
 package org.contikios.contiki.collect.gui;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.util.Date;
@@ -77,6 +78,8 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
   private boolean hasGlobalRange;
   private int maxItemCount;
   
+  public final Color JAVA_DEF=new Color(238,238,238);
+  
   public TimeChartPanel(CollectServer server, String category, String title,
       String chartTitle, String timeAxisLabel, String valueAxisLabel) {
     super(new BorderLayout());
@@ -88,6 +91,7 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
         chartTitle, timeAxisLabel, valueAxisLabel, timeSeries,
         true, true, false
     );
+    //chart.setBackgroundPaint(JAVA_DEF);
     this.chartPanel = new ChartPanel(chart);
     this.chartPanel.setPreferredSize(new Dimension(500, 270));
     setBaseShapeVisible(true);
@@ -127,6 +131,10 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
 
   @Override
   public void nodeDataReceived(SensorData data) {
+    //this instance doesn't need to show values from that node
+    if ((new Double(getSensorDataValue(data))).isNaN())
+      return;
+    
     if (hasGlobalRange) {
       boolean update = false;
       if (minValue > maxValue) {
@@ -146,11 +154,11 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
         updateGlobalRange();
       }
     }
-    if (isVisible() && selectedNodes != null && selectedNodes.length == timeSeries.getSeriesCount()) {
+    if (isVisible() && selectedNodes != null ) {//&& selectedNodes.length == timeSeries.getSeriesCount()
       Node node = data.getNode();
       for (int i = 0, n = selectedNodes.length; i < n; i++) {
         if (node == selectedNodes[i]) {
-          TimeSeries series = timeSeries.getSeries(i);
+          TimeSeries series = timeSeries.getSeries(node.getName());
           int groupSize = getGroupSize(node);
           if (groupSize > 1) {
             series.clear();
@@ -176,37 +184,43 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
     timeSeries.removeAllSeries();
     if (this.selectedNodes != null) {
       for(Node node: this.selectedNodes) {
-        TimeSeries series = new TimeSeries(node.getName(), Second.class);
+    	/*  @deprecated
+    	 *  TimeSeries series = new TimeSeries(node.getName(), Second.class);
+    	 */  
+        TimeSeries series = new TimeSeries(node.getName());
         // Reduce the number of items by grouping them and use the average for each group
         int groupSize = getGroupSize(node);
         if (groupSize > 1) {
-          updateSeries(series, node, groupSize);
+         updateSeries(series, node, groupSize);
         } else {
           for (int i = 0, n = node.getSensorDataCount(); i < n; i++) {
             SensorData data = node.getSensorData(i);
-            series.addOrUpdate(new Second(new Date(data.getNodeTime())), getSensorDataValue(data));
+            Double value=new Double(getSensorDataValue(data));
+            if (!value.isNaN()){
+              series.addOrUpdate(new Second(new Date(data.getNodeTime())), value);
+            }
+            else break;//this instance doesn't need to show values from that node
           }
         }
-        timeSeries.addSeries(series);
+        if (series.getItemCount()!=0){
+          timeSeries.addSeries(series);
+        }
       }
     }
   }
-
-  protected int getGroupSize(Node node) {
+  
+  protected int getGroupSize(Node node){
     if (maxItemCount > 0) {
       int sensorDataCount = node.getSensorDataCount();
-      if (sensorDataCount > maxItemCount) {
-        int groupSize = sensorDataCount / maxItemCount;
-        if (sensorDataCount / groupSize >= maxItemCount) {
-          groupSize++;
-        }
-        return groupSize;
-      }
+      int groupSize = sensorDataCount / maxItemCount;
+      if (sensorDataCount % maxItemCount > 0)
+        groupSize++;
+      return groupSize;
     }
     return 1;
   }
-
-  protected void updateSeries(TimeSeries series, Node node, int groupSize) {
+  
+  protected void updateSeriesQuick(TimeSeries series, Node node, int groupSize) {
     for (int i = 0, n = node.getSensorDataCount(); i < n; i += groupSize) {
       double value = 0.0;
       long time = 0L;
@@ -218,6 +232,39 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
       series.addOrUpdate(new Second(new Date((time / groupSize) * 1000L)), value / groupSize);
     }
   }
+  
+  protected void updateSeries(TimeSeries series, Node node, int groupSize) {
+    int dataCount=node.getSensorDataCount();
+    int i, n, k;
+    double value = 0.0;
+    long time = 0L;
+    
+    if ((new Double(getSensorDataValue(node.getSensorData(0)))).isNaN())
+      return;
+    
+    for (i = 0, n = dataCount; i+groupSize < n; i += groupSize) {  
+      value = 0.0;
+      time = 0L;
+      for (int j = 0; j < groupSize; j++) {
+        SensorData data = node.getSensorData(i + j);
+        value += getSensorDataValue(data); 
+        time += data.getNodeTime() / 1000L;
+      }
+      series.addOrUpdate(new Second(new Date(((time / groupSize) * 1000L))), value / groupSize);
+    }
+    
+    // add last group.
+    int lastGroupSize=n-i;
+    time = 0L;
+    value = 0.0;
+    for (k = i; k < n; k++){
+      SensorData data = node.getSensorData(k);
+      value += getSensorDataValue(data);
+      time += data.getNodeTime() / 1000L;
+    }
+    series.addOrUpdate(new Second(new Date(((time / lastGroupSize) * 1000L))), value / lastGroupSize);
+  }
+ 
 
   public boolean getBaseShapeVisible() {
     return ((XYLineAndShapeRenderer)this.chart.getXYPlot().getRenderer()).getBaseShapesVisible();
@@ -262,7 +309,7 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
     }
   }
 
-  private void updateGlobalRange() {
+  public void updateGlobalRange() {
     if (hasGlobalRange) {
       if (minValue > maxValue) {
         for (int i = 0, n = server.getSensorDataCount(); i < n; i++) {
@@ -271,7 +318,7 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
           if (value > maxValue) maxValue = value;
         }
       }
-      if (minValue < maxValue) {
+      if (minValue <= maxValue) {
         double minSize = getRangeMinimumSize();
         double min = minValue;
         double max = maxValue;
@@ -282,7 +329,7 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
         }
         if (rangeTick > 0) {
           min = ((int) (min - rangeTick / 2) / rangeTick) * rangeTick;
-//          max = ((int) (max + rangeTick / 2) / rangeTick) * rangeTick;
+          //max = ((int) (max + rangeTick / 2) / rangeTick) * rangeTick;
         }
         chart.getXYPlot().getRangeAxis().setRange(min, max);
       }
@@ -321,6 +368,12 @@ public abstract class TimeChartPanel extends JPanel implements Visualizer {
       timeSeries.removeAllSeries();
     }
     super.setVisible(visible);
+  }
+  
+  public void update() {
+    if (isVisible()) {
+      updateCharts();
+    }
   }
 
   protected abstract double getSensorDataValue(SensorData data);

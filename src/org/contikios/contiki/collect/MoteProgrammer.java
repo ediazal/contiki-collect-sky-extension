@@ -35,6 +35,7 @@
  * Created : 10 jul 2008
  * Updated : $Date: 2010/11/03 14:53:05 $
  *           $Revision: 1.1 $
+ * Modified by Eloy Díaz, 30 jul 2012
  */
 
 package org.contikios.contiki.collect;
@@ -59,7 +60,7 @@ public class MoteProgrammer {
 
   private MoteProgrammerProcess[] processes;
   private String[] motes;
-  private String firmwareFile;
+  private String[] firmwareFiles;
 
   private Window parent;
   private JProgressBar progressBar;
@@ -87,6 +88,12 @@ public class MoteProgrammer {
     return motes;
   }
 
+  public String[] getMoteInfoList() throws IOException {
+    MoteFinder finder = new MoteFinder();
+    finder.getMotes();
+    return finder.getMoteInfoList();
+  }
+
   public void setMotes(String[] motes) {
     this.motes = motes;
   }
@@ -97,24 +104,29 @@ public class MoteProgrammer {
     finder.close();
   }
 
-  public String getFirmwareFile() {
-    return firmwareFile;
+  public String[] getFirmwareFiles() {
+    return firmwareFiles;
   }
 
-  public void setFirmwareFile(String firmwareFile) {
-    this.firmwareFile = firmwareFile;
+  public void setFirmwareFiles(String[] firmwareFiles) {
+    this.firmwareFiles = firmwareFiles;
   }
 
   public void programMotes() throws IOException {
-    if (firmwareFile == null) {
+    if (firmwareFiles == null) {
       throw new IllegalStateException("no firmware");
     }
     if (!hasMotes()) {
       throw new IllegalStateException("no motes");
     }
-    File fp = new File(firmwareFile);
-    if (!fp.canRead()) {
-      throw new IllegalStateException("can not read firmware file '" + fp.getAbsolutePath() + '\'');
+
+    for (int i = 0; i < firmwareFiles.length; i++) {
+      firmwareFiles[i] = "./firmware/" + firmwareFiles[i];
+      File fp = new File(firmwareFiles[i]);
+      if (!fp.canRead()) {
+        throw new IllegalStateException("can not read firmware file '"
+            + fp.getAbsolutePath() + '\'');
+      }
     }
     if (parent != null) {
       // Use GUI
@@ -148,9 +160,11 @@ public class MoteProgrammer {
     processes = new MoteProgrammerProcess[motes.length];
     isDone = false;
     try {
-      log("Programming " + motes.length + " motes with '" + firmwareFile + '\'', null);
+      log("Programming " + motes.length + " motes", null);
+      /* with '" + firmwareFile + '\'', null); */
+
       for (int i = 0, n = processes.length; i < n; i++) {
-        processes[i] = new MoteProgrammerProcess(motes[i], firmwareFile) {
+        processes[i] = new MoteProgrammerProcess(motes[i], firmwareFiles[i]) {
           protected void logLine(String line, boolean stderr, Throwable e) {
             if (!handleLogLine(this, line, stderr, e)) {
               super.logLine(line, stderr, e);
@@ -264,7 +278,7 @@ public class MoteProgrammer {
       System.err.println("Usage: MoteProgrammer <firmware> [mote]");
       System.exit(1);
     }
-    mp.setFirmwareFile(args[0]);
+    mp.setFirmwareFiles(new String[] { args[0] });
     if (args.length == 2) {
       mp.setMotes(new String[] { args[1] });
     } else {
